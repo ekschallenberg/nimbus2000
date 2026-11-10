@@ -1,0 +1,13 @@
+date,item_id,item,source,observed_at_utc,temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,pressure_msl,us_aqi,pm2_5,pm10,ozone
+2026-11-10,cairo,Cairo,open-meteo,2026-11-10T01:15,13.9,73,7.2,0.0,1023.9,62,12.6,20.3,28.0
+2026-11-10,delhi,Delhi,open-meteo,2026-11-10T01:15,19.3,83,1.2,0.0,1016.9,195,153.7,178.3,15.0
+2026-11-10,fayetteville-ar,"Fayetteville, AR",open-meteo,2026-11-10T01:15,12.5,56,10.1,0.0,1019.8,49,9.8,9.8,63.0
+2026-11-10,london,London,open-meteo,2026-11-10T01:15,6.8,87,10.4,0.0,1013.6,81,22.9,25.6,20.0
+2026-11-10,mexico-city,Mexico City,open-meteo,2026-11-10T01:15,19.6,46,5.5,0.0,1016.2,104,24.4,24.9,81.0
+2026-11-10,nairobi,Nairobi,open-meteo,2026-11-10T01:15,16.9,92,4.6,0.0,1019.0,45,9.6,10.0,24.0
+2026-11-10,new-york,New York,open-meteo,2026-11-10T01:15,10.4,54,9.7,0.0,1014.9,35,3.7,3.8,35.0
+2026-11-10,paris,Paris,open-meteo,2026-11-10T01:15,8.7,94,4.9,0.1,1010.9,73,19.4,22.8,3.0
+2026-11-10,sao-paulo,São Paulo,open-meteo,2026-11-10T01:15,13.3,91,10.9,0.0,1027.6,47,10.5,14.0,36.0
+2026-11-10,singapore,Singapore,open-meteo,2026-11-10T01:15,26.4,92,5.6,0.0,1012.5,55,13.3,14.5,27.0
+2026-11-10,sydney,Sydney,open-meteo,2026-11-10T01:15,21.7,51,11.8,0.0,1016.2,51,11.4,15.1,76.0
+2026-11-10,tokyo,Tokyo,open-meteo,2026-11-10T01:15,10.1,84,4.5,0.0,1021.0,64,14.0,14.3,37.0

@@ -1,0 +1,20 @@
+{
+  "run_time": "2026-11-10T01:23:47Z",
+  "first_run_date": "2026-11-10",
+  "days_with_success": 1,
+  "items": 12,
+  "new_today": [],
+  "gone_today": [],
+  "sources": [
+    {
+      "name": "weather",
+      "ok": true,
+      "count": 12
+    },
+    {
+      "name": "air_quality",
+      "ok": true,
+      "count": 12
+    }
+  ]
+}
