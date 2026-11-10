@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1769aa">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+<title>Trends · Nimbus 2000</title>
+</head>
+<body>
+<div class="wrap"><main>
+  <h1>Trends</h1>
+  <p class="sub" id="intro"></p>
+
+  <h2>Every value over the days</h2>
+  <p class="how">Pick which cities are drawn. This control only changes the line charts below; the findings further down always use every city in <code>data/history.csv</code>.</p>
+  <div class="controls"><button id="all">All cities</button><button id="none">No cities</button></div>
+  <div class="chips" id="chips"></div>
+  <div class="grid2" id="lines"></div>
+
+  <h2>Findings</h2>
+  <div id="findings"></div>
+</main></div>
+<script src="app.js"></script>
+<script>
+App.boot("trends.html", ({ rows }) => {
+  const { esc, fmt, signed, LABEL, UNIT, NUMERIC, PALETTE, $ } = App;
+  const days = App.dates(rows);
+  const ids = [...new Set(rows.map((r) => r.item_id))].sort();
+  const name = Object.fromEntries(rows.map((r) => [r.item_id, r.item]));
+  const color = Object.fromEntries(ids.map((id, i) => [id, PALETTE[i % PALETTE.length]]));
+  const val = new Map(rows.map((r) => [r.date + "|" + r.item_id, r]));
+  const get = (d, id, c) => { const r = val.get(d + "|" + id); return r ? r[c] : null; };
+  $("#intro").textContent = `Computed in your browser from ${rows.length} rows: ${ids.length} cities over ${days.length} day${days.length === 1 ? "" : "s"} (${days[0]} to ${days[days.length - 1]}). The page changes as the history grows.`;
+
+  // ---- control + one line chart per numeric value
+  const shown = new Set(ids);
+  $("#chips").innerHTML = ids.map((id) => `<span class="chip" role="button" tabindex="0" aria-pressed="true" data-id="${esc(id)}"><i style="background:${color[id]}"></i>${esc(name[id])}</span>`).join("");
+  $("#lines").innerHTML = NUMERIC.map((c) => `<div class="panel"><h3>${LABEL[c]}${UNIT[c] ? " (" + UNIT[c] + ")" : ""}</h3><div class="chart" id="line-${c}"></div></div>`).join("");
+  function drawLines() {
+    document.querySelectorAll(".chip").forEach((el) => { const on = shown.has(el.dataset.id); el.classList.toggle("off", !on); el.setAttribute("aria-pressed", on); });
+    for (const c of NUMERIC) {
+      App.lineChart($("#line-" + c), {
+        labels: days, unit: UNIT[c], label: LABEL[c] + " over the days",
+        series: ids.filter((id) => shown.has(id)).map((id) => ({ name: name[id], color: color[id], points: days.map((d, i) => ({ x: i, y: get(d, id, c) })) })),
+      });
+    }
+  }
+  const toggle = (el) => { const id = el.dataset.id; shown.has(id) ? shown.delete(id) : shown.add(id); drawLines(); };
+  $("#chips").addEventListener("click", (e) => { const el = e.target.closest(".chip"); if (el) toggle(el); });
+  $("#chips").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { const el = e.target.closest(".chip"); if (el) { e.preventDefault(); toggle(el); } } });
+  $("#all").onclick = () => { ids.forEach((i) => shown.add(i)); drawLines(); };
+  $("#none").onclick = () => { shown.clear(); drawLines(); };
+  drawLines();
+
+  // ---- findings: each = heading (the finding), paragraph (numbers + how computed), chart
+  const F = $("#findings");
+  const section = (heading, text, how) => {
+    const s = document.createElement("section"); s.className = "finding";
+    s.innerHTML = `<h2>${heading}</h2><p>${text}</p><p class="how"><strong>How it is computed:</strong> ${how}</p><div class="panel"><div class="chart"></div></div>`;
+    F.appendChild(s); return s.querySelector(".chart");
+  };
+  const first = days[0], last = days[days.length - 1];
+  const lastVal = (id, c) => { for (let i = days.length - 1; i >= 0; i--) { const v = get(days[i], id, c); if (v != null) return { v, d: days[i] }; } return null; };
+  const firstVal = (id, c) => { for (const d of days) { const v = get(d, id, c); if (v != null) return { v, d }; } return null; };
+
+  // 1. biggest change in temperature since the first run
+  {
+    const ch = ids.map((id) => { const a = firstVal(id, "temperature_2m"), b = lastVal(id, "temperature_2m"); return a && b && a.d !== b.d ? { id, change: b.v - a.v, a, b } : null; }).filter(Boolean);
+    const how = "for each city, the latest temperature_2m minus its first recorded temperature_2m in the history file; the city with the largest absolute difference is named.";
+    if (!ch.length) {
+      App.barChart(section("Temperature change since the first run needs more than one day", `The history only holds ${days.length} day, so there is nothing to compare yet. This section fills in after the next daily run.`, how), { bars: [] });
+    } else {
+      ch.sort((x, y) => Math.abs(y.change) - Math.abs(x.change));
+      const t = ch[0];
+      App.barChart(section(`${esc(name[t.id])} ${t.change >= 0 ? "warmed" : "cooled"} the most since the first run: ${signed(t.change)} °C`,
+        `${esc(name[t.id])} went from ${fmt(t.a.v)} °C on ${t.a.d} to ${fmt(t.b.v)} °C on ${t.b.d}. Across ${ch.length} cities the changes ranged from ${signed(Math.min(...ch.map((x) => x.change)))} °C to ${signed(Math.max(...ch.map((x) => x.change)))} °C.`, how),
+        { bars: ch.slice().sort((x, y) => y.change - x.change).map((x) => ({ label: name[x.id], value: x.change, color: x.change >= 0 ? "#e6550d" : "#1769aa" })), unit: "°C change", digits: 1, label: "Temperature change since the first run" });
+    }
+  }
+
+  // 2. day with the biggest move
+  {
+    const per = days.slice(1).map((d, i) => {
+      const diffs = ids.map((id) => { const a = get(days[i], id, "temperature_2m"), b = get(d, id, "temperature_2m"); return a != null && b != null ? Math.abs(b - a) : null; }).filter((x) => x != null);
+      return { d, avg: diffs.length ? diffs.reduce((a, b) => a + b, 0) / diffs.length : null, n: diffs.length };
+    }).filter((x) => x.avg != null);
+    const how = "for each day after the first, the absolute change in temperature_2m from the previous day for every city, averaged over the cities that have both days.";
+    if (!per.length) {
+      App.barChart(section("The biggest day-to-day swing needs at least two days", `Only ${days.length} day of history so far.`, how), { bars: [] });
+    } else {
+      const top = per.reduce((a, b) => (b.avg > a.avg ? b : a));
+      App.lineChart(section(`The biggest day-to-day swing was on ${top.d}: ${fmt(top.avg, 2)} °C on average`,
+        `On ${top.d} the average city moved ${fmt(top.avg, 2)} °C from the previous day (${top.n} cities compared). The quietest day was ${per.reduce((a, b) => (b.avg < a.avg ? b : a)).d} at ${fmt(Math.min(...per.map((x) => x.avg)), 2)} °C.`, how),
+        { labels: per.map((x) => x.d), unit: "°C average change", label: "Average absolute temperature change per day",
+          series: [{ name: "Average |change|", color: PALETTE[1], points: per.map((x, i) => ({ x: i, y: x.avg })) }] });
+    }
+  }
+
+  // 3. how far apart the cities are on the latest day
+  {
+    const L = ids.map((id) => ({ id, v: get(last, id, "temperature_2m") })).filter((x) => x.v != null).sort((a, b) => b.v - a.v);
+    const how = "on the latest date in the history file, the highest and lowest temperature_2m across cities, and their difference.";
+    if (L.length < 2) App.barChart(section("Not enough cities with temperatures on the latest day", "At least two cities are needed.", how), { bars: [] });
+    else {
+      const hot = L[0], cold = L[L.length - 1];
+      App.barChart(section(`On ${last} the cities were ${fmt(hot.v - cold.v)} °C apart`,
+        `${esc(name[hot.id])} was warmest at ${fmt(hot.v)} °C and ${esc(name[cold.id])} coldest at ${fmt(cold.v)} °C; the median city was ${fmt(L.map((x) => x.v).sort((a, b) => a - b)[Math.floor((L.length - 1) / 2)])} °C (lower median).`, how),
+        { bars: L.map((x) => ({ label: name[x.id], value: x.v, color: x.v >= 0 ? "#e6550d" : "#1769aa" })), unit: "°C", label: "Latest temperature by city" });
+    }
+  }
+
+  // 4. cleanest / dirtiest air
+  {
+    const A = ids.map((id) => { const v = days.map((d) => get(d, id, "us_aqi")).filter((x) => x != null); return v.length ? { id, mean: v.reduce((a, b) => a + b, 0) / v.length, n: v.length } : null; }).filter(Boolean).sort((a, b) => b.mean - a.mean);
+    const how = "for each city, the mean of its us_aqi values over all days that have one in the history file; cities are ranked by that mean.";
+    if (!A.length) App.barChart(section("No air quality values yet", "The history file has no us_aqi values.", how), { bars: [] });
+    else {
+      const worst = A[0], best = A[A.length - 1];
+      App.barChart(section(`${esc(name[worst.id])} has the dirtiest air: average US AQI ${fmt(worst.mean)}`,
+        `Over ${worst.n} day${worst.n === 1 ? "" : "s"}, ${esc(name[worst.id])} averaged a US AQI of ${fmt(worst.mean)} (${esc(App.aqiBand(worst.mean))}), while ${esc(name[best.id])} had the cleanest air at ${fmt(best.mean)} (${esc(App.aqiBand(best.mean))}). Lower is better; 50 or below is "Good".`, how),
+        { bars: A.map((x) => ({ label: name[x.id], value: x.mean, color: x.mean > 100 ? "#d62728" : x.mean > 50 ? "#f0a30a" : "#2ca02c" })), unit: "average US AQI", label: "Average US AQI by city" });
+    }
+  }
+
+  // 5. humidity vs temperature
+  {
+    const pts = rows.filter((r) => r.temperature_2m != null && r.relative_humidity_2m != null).map((r) => ({ x: r.temperature_2m, y: r.relative_humidity_2m, label: r.item + " " + r.date }));
+    const how = "the Pearson correlation coefficient r between temperature_2m and relative_humidity_2m over every city-day row that has both values; each dot is one row.";
+    let r = null;
+    if (pts.length > 2) {
+      const mx = pts.reduce((a, p) => a + p.x, 0) / pts.length, my = pts.reduce((a, p) => a + p.y, 0) / pts.length;
+      const sxy = pts.reduce((a, p) => a + (p.x - mx) * (p.y - my), 0), sxx = pts.reduce((a, p) => a + (p.x - mx) ** 2, 0), syy = pts.reduce((a, p) => a + (p.y - my) ** 2, 0);
+      r = sxx > 0 && syy > 0 ? sxy / Math.sqrt(sxx * syy) : null;
+    }
+    const strength = r == null ? "" : Math.abs(r) >= 0.5 ? "strongly" : Math.abs(r) >= 0.25 ? "moderately" : "only weakly";
+    App.scatterChart(section(r == null ? "Humidity and temperature: not enough data yet" : `Warmer city-days are ${strength} ${r < 0 ? "less" : "more"} humid (r = ${fmt(r, 2)})`,
+      r == null ? "At least three rows with both values are needed." : `Across ${pts.length} city-day rows the correlation between temperature and relative humidity is r = ${fmt(r, 2)}. Values near 0 mean no linear relationship; −1 or +1 mean a perfect one.`, how),
+      { points: pts, xLabel: "Temperature (°C)", yLabel: "Relative humidity (%)", label: "Humidity versus temperature" });
+  }
+});
+</script>
+</body>
+</html>

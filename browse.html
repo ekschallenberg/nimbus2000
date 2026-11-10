@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1769aa">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+<title>Browse · Nimbus 2000</title>
+</head>
+<body>
+<div class="wrap"><main>
+  <h1>Browse</h1>
+  <p class="sub">Latest values for every city. Filter, search, sort, and star cities to keep a shortlist (saved in this browser).</p>
+  <div class="controls">
+    <label>Search city<input type="search" id="q" placeholder="e.g. paris"></label>
+    <label>Air quality band<select id="band"><option value="">All</option></select></label>
+    <label>Temperature min (°C)<input type="number" id="tmin" step="any"></label>
+    <label>Temperature max (°C)<input type="number" id="tmax" step="any"></label>
+    <label>Precipitation<select id="wet"><option value="">Any</option><option value="wet">Raining now</option><option value="dry">Dry</option></select></label>
+    <label class="inline"><input type="checkbox" id="short"> Shortlist only</label>
+    <button id="reset">Reset</button>
+  </div>
+  <p class="muted" id="count" role="status"></p>
+  <div class="tablewrap"><table id="t"><thead></thead><tbody></tbody></table></div>
+</main></div>
+<script src="app.js"></script>
+<script>
+App.boot("browse.html", ({ rows }) => {
+  const { esc, fmt, LABEL, UNIT, NUMERIC, $ } = App;
+  const { latest, latestDate } = App.splitLastTwo(rows);
+  const KEY = "nimbus-shortlist";
+  let stars = new Set();
+  try { stars = new Set(JSON.parse(localStorage.getItem(KEY) || "[]")); } catch (e) {}
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify([...stars])); } catch (e) {} };
+  let sortCol = "item", dir = 1;
+
+  const bands = ["Good", "Moderate", "Unhealthy for sensitive groups", "Unhealthy", "Very unhealthy", "Hazardous", "No data"];
+  $("#band").innerHTML += bands.map((b) => `<option>${b}</option>`).join("");
+
+  $("#t thead").innerHTML = '<tr><th class="l">★</th><th class="l sortable" data-c="item">City <span class="arr"></span></th><th class="l">Air quality</th>' +
+    NUMERIC.map((c) => `<th class="sortable" data-c="${c}">${LABEL[c]}${UNIT[c] ? " (" + UNIT[c] + ")" : ""} <span class="arr"></span></th>`).join("") + "</tr>";
+
+  function view() {
+    const q = $("#q").value.trim().toLowerCase(), band = $("#band").value, wet = $("#wet").value;
+    const tmin = App.num($("#tmin").value), tmax = App.num($("#tmax").value), only = $("#short").checked;
+    let list = latest.filter((r) =>
+      (!q || r.item.toLowerCase().includes(q)) && (!band || App.aqiBand(r.us_aqi) === band) &&
+      (tmin == null || (r.temperature_2m != null && r.temperature_2m >= tmin)) &&
+      (tmax == null || (r.temperature_2m != null && r.temperature_2m <= tmax)) &&
+      (!wet || (wet === "wet" ? (r.precipitation || 0) > 0 : !((r.precipitation || 0) > 0))) &&
+      (!only || stars.has(r.item_id)));
+    list.sort((a, b) => {
+      const x = a[sortCol], y = b[sortCol];
+      if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; // empty values last
+      return (typeof x === "string" ? x.localeCompare(y) : x - y) * dir;
+    });
+    $("#count").textContent = `Showing ${list.length} of ${latest.length} cities (data for ${latestDate}).`;
+    $("#t tbody").innerHTML = list.map((r) => `<tr><td class="l"><button class="star${stars.has(r.item_id) ? " on" : ""}" data-id="${esc(r.item_id)}" aria-pressed="${stars.has(r.item_id)}" aria-label="Shortlist ${esc(r.item)}">${stars.has(r.item_id) ? "★" : "☆"}</button></td>` +
+      `<td class="l">${esc(r.item)}</td><td class="l">${esc(App.aqiBand(r.us_aqi))}</td>` +
+      NUMERIC.map((c) => "<td>" + fmt(r[c], c === "precipitation" ? 2 : 1) + "</td>").join("") + "</tr>").join("");
+    document.querySelectorAll("#t th.sortable").forEach((th) => { th.querySelector(".arr").textContent = th.dataset.c === sortCol ? (dir > 0 ? "▲" : "▼") : ""; });
+  }
+
+  document.querySelectorAll("#t th.sortable").forEach((th) => th.addEventListener("click", () => {
+    if (sortCol === th.dataset.c) dir = -dir; else { sortCol = th.dataset.c; dir = th.dataset.c === "item" ? 1 : -1; }
+    view();
+  }));
+  $("#t tbody").addEventListener("click", (e) => {
+    const b = e.target.closest(".star"); if (!b) return;
+    const id = b.dataset.id; stars.has(id) ? stars.delete(id) : stars.add(id); save(); view();
+  });
+  ["#q", "#band", "#tmin", "#tmax", "#wet", "#short"].forEach((s) => $(s).addEventListener("input", view));
+  $("#reset").addEventListener("click", () => { ["#q", "#band", "#tmin", "#tmax", "#wet"].forEach((s) => ($(s).value = "")); $("#short").checked = false; view(); });
+  view();
+});
+</script>
+</body>
+</html>

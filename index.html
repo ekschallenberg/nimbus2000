@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1769aa">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+<title>Today · Nimbus 2000</title>
+</head>
+<body>
+<div class="wrap"><main>
+  <h1>Today</h1>
+  <p class="sub">Latest weather and air quality for the tracked cities, and what changed since the previous run.</p>
+  <div id="cards" class="cards"></div>
+  <h2>Sources</h2>
+  <div class="tablewrap"><table id="sources"><thead><tr><th>Source</th><th>Status</th><th>Cities with data</th></tr></thead><tbody></tbody></table></div>
+  <h2>Latest values <span class="muted" id="latest-date" style="font-weight:400;font-size:.9rem"></span></h2>
+  <div class="tablewrap"><table id="latest"><thead></thead><tbody></tbody></table></div>
+  <h2>Biggest moves since the previous run</h2>
+  <div id="moves" class="panel" style="padding:0"></div>
+  <p class="muted" style="font-size:.88rem">Move rule: |new − old| divided by the standard deviation of that column across all cities in the latest run; the 10 largest are listed.</p>
+</main></div>
+<script src="app.js"></script>
+<script>
+App.boot("index.html", ({ rows, status }, main) => {
+  const { esc, fmt, withUnit, signed, LABEL, UNIT, NUMERIC, $ } = App;
+  const { prev, latest, latestDate, prevDate } = App.splitLastTwo(rows);
+  const mv = App.computeMoves(prev, latest);
+  const names = Object.fromEntries(rows.map((r) => [r.item_id, r.item]));
+  const list = (ids) => (ids.length ? ids.map((i) => esc(names[i] || i)).join(", ") : "none");
+
+  const card = (k, v, small) => `<div class="card"><div class="k">${k}</div><div class="v${small ? " small" : ""}">${v}</div></div>`;
+  $("#cards").innerHTML =
+    card("Last run (UTC)", esc(status.run_time ? status.run_time.replace("T", " ").replace("Z", "") : "–"), true) +
+    card("Items", status.items) + card("Days with success", status.days_with_success) +
+    card("First run date", esc(status.first_run_date || "–"), true) +
+    card("New today", list(status.new_today || []), true) + card("Gone today", list(status.gone_today || []), true);
+
+  $("#sources tbody").innerHTML = (status.sources || []).map((s) =>
+    `<tr><td>${esc(s.name)}</td><td><span class="badge ${s.ok ? "ok" : "fail"}">${s.ok ? "OK" : "Failed"}</span></td><td>${s.count}</td></tr>`).join("");
+
+  $("#latest-date").textContent = latestDate ? "(" + latestDate + (prevDate ? ", change vs " + prevDate : ", first run: no change yet") + ")" : "";
+  $("#latest thead").innerHTML = "<tr><th>City</th>" + NUMERIC.map((c) => `<th>${LABEL[c]}${UNIT[c] ? " (" + UNIT[c] + ")" : ""}</th>`).join("") + "</tr>";
+  const P = new Map(prev.map((r) => [r.item_id, r]));
+  $("#latest tbody").innerHTML = latest.map((r) => "<tr><td>" + esc(r.item) + "</td>" + NUMERIC.map((c) => {
+    const old = P.get(r.item_id) ? P.get(r.item_id)[c] : null, v = r[c];
+    let d = "";
+    if (v != null && old != null) {
+      const ch = v - old;
+      d = `<span class="delta ${ch > 0 ? "up" : ch < 0 ? "down" : "flat"}">${ch === 0 ? "no change" : (ch > 0 ? "▲ " : "▼ ") + signed(ch, 2)}</span>`;
+    }
+    return "<td>" + fmt(v, c === "precipitation" ? 2 : 1) + d + "</td>";
+  }).join("") + "</tr>").join("");
+
+  $("#moves").innerHTML = !prev.length ? '<p class="muted" style="padding:12px 14px;margin:0">First run: there is no previous run to compare with yet.</p>' :
+    '<ol class="moves" style="list-style:decimal inside">' + (mv.moves.map((m) =>
+      `<li><span><strong>${esc(m.item)}</strong> · ${esc(LABEL[m.column])}</span><span>${withUnit(m.column, m.old, 2)} → ${withUnit(m.column, m.new, 2)} (${signed(m.change, 2)}) · score ${fmt(m.score, 2)}</span></li>`).join("") || '<li class="muted">No comparable values.</li>') + "</ol>";
+});
+</script>
+</body>
+</html>
