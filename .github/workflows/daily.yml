@@ -1,0 +1,54 @@
+name: daily
+
+on:
+  schedule:
+    - cron: "15 6 * * *"   # once a day, 06:15 UTC (not the top of the hour)
+  workflow_dispatch:        # run manually from the Actions tab
+
+permissions:
+  contents: write           # commit the data files
+  issues: write             # open/close the daily Issue
+
+concurrency:
+  group: daily
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # No secrets are needed for Open-Meteo. If a keyed source is ever added,
+      # pass it here via `env: KEY: ${{ secrets.KEY }}`; never write it to a file.
+      - name: Fetch, build history, write status
+        id: fetch
+        continue-on-error: true   # still commit what we got; failed at the end
+        run: python scripts/fetch.py
+
+      - name: Commit data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/raw data/history.csv data/status.json
+          if git diff --cached --quiet; then
+            echo "No data changes to commit."
+          else
+            git commit -m "data: daily update $(date -u +%Y-%m-%d)"
+            git pull --rebase
+            git push
+          fi
+
+      - name: Open today's Issue and close the previous one
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/report.py --publish
+
+      - name: Fail the run if the fetch had errors
+        if: steps.fetch.outcome == 'failure'
+        run: |
+          echo "scripts/fetch.py reported an error (see the Fetch step)."
+          exit 1
